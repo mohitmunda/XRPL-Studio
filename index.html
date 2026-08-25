@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>XRPL Token Studio</title>
+<script src="https://cdn.jsdelivr.net/npm/xrpl@4.4.3/build/xrpl-latest-min.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f5f8;color:#172033;font-family:Arial,sans-serif}
+.wrap{max-width:1050px;margin:25px auto;padding:16px}.panel{background:#fff;border-radius:18px;padding:24px;box-shadow:0 10px 30px #0001}
+h1{margin:0 0 7px;text-align:center}.sub{text-align:center;color:#667085;margin:0 0 22px}
+.notice{background:#fff7df;border:1px solid #e8cf75;border-radius:12px;padding:13px;font-size:13px;line-height:1.5;margin-bottom:18px}
+.tabs{display:flex;gap:8px;overflow:auto;margin-bottom:18px}.tab{white-space:nowrap;width:auto;margin:0;padding:11px 15px;background:#eef0f5;color:#172033}.tab.active{background:#5263ff;color:white}
+.section{display:none}.section.active{display:block}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.full{grid-column:1/-1}
+label{display:block;font-size:13px;font-weight:700;margin-bottom:6px}input,select{width:100%;padding:12px;border:1px solid #d0d5dd;border-radius:9px;font-size:15px;background:#fff}
+button{border:0;border-radius:9px;padding:12px 16px;background:#5263ff;color:#fff;font-weight:700;font-size:15px;cursor:pointer;margin-top:10px}
+button.secondary{background:#172033}button.danger{background:#b42318}.row{display:flex;gap:10px;flex-wrap:wrap}.row button{flex:1;min-width:150px}
+.status{margin-top:15px;background:#f5f6f8;border-radius:10px;padding:12px;white-space:pre-wrap;font:13px monospace;min-height:42px}
+.small{font-size:12px;color:#667085;line-height:1.45}.result{margin-top:14px;padding:14px;border:1px solid #e4e7ec;border-radius:10px;display:none}
+@media(max-width:700px){.grid{grid-template-columns:1fr}.full{grid-column:auto}.panel{padding:17px}}
+</style>
+</head>
+<body>
+<div class="wrap"><div class="panel">
+<h1>XRPL Token Studio</h1>
+<p class="sub">Create, manage, distribute and add liquidity to XRPL issued tokens.</p>
+
+<div class="notice">
+<strong>Security:</strong> This app is intended to sign transactions in your browser.
+For real funds, prefer a hardware wallet or a trusted offline signing workflow.
+Never send your secret key to a server. Test everything on XRPL Testnet first.
+Creating an issued token does not create an independent blockchain or guarantee value/liquidity.
+</div>
+
+<div class="grid">
+<div>
+<label>Network</label>
+<select id="network">
+<option value="wss://s1.ripple.com">Mainnet</option>
+<option value="wss://s.altnet.rippletest.net:51233">Testnet</option>
+<option value="wss://s.devnet.rippletest.net:51233">Devnet</option>
+</select>
+</div>
+<div>
+<label>Secret / Seed</label>
+<input id="seed" type="password" placeholder="s...">
+</div>
+</div>
+
+<div class="tabs">
+<button class="tab active" onclick="tab('create',this)">Create Token</button>
+<button class="tab" onclick="tab('issue',this)">Issue / Burn</button>
+<button class="tab" onclick="tab('settings',this)">Issuer Settings</button>
+<button class="tab" onclick="tab('trust',this)">Trust Line</button>
+<button class="tab" onclick="tab('amm',this)">Liquidity / AMM</button>
+<button class="tab" onclick="tab('account',this)">Account</button>
+</div>
+
+<section id="create" class="section active">
+<h2>Create / Configure Token</h2>
+<p class="small">On XRPL, a classic fungible token is identified by its currency code and issuer account. The issuer account already exists; this section configures it for token issuance.</p>
+<div class="grid">
+<div><label>Currency Code</label><input id="currency" maxlength="3" placeholder="ABC"></div>
+<div><label>Transfer Fee (%)</label><input id="transferFee" type="number" min="0" max="2" step="0.001" value="0"></div>
+<div><label>Tick Size (3–15)</label><input id="tickSize" type="number" min="3" max="15" value="15"></div>
+<div><label>Enable Default Ripple</label><select id="defaultRipple"><option value="yes">Yes</option><option value="no">No</option></select></div>
+</div>
+<div class="row">
+<button onclick="configureIssuer()">Configure Issuer</button>
+</div>
+<div id="createStatus" class="status"></div>
+</section>
+
+<section id="issue" class="section">
+<h2>Issue / Burn Tokens</h2>
+<div class="grid">
+<div><label>Currency</label><input id="issueCurrency" placeholder="ABC"></div>
+<div><label>Issuer</label><input id="issueIssuer" placeholder="r..."></div>
+<div><label>Destination</label><input id="destination" placeholder="r..."></div>
+<div><label>Amount</label><input id="issueAmount" type="text" placeholder="1000000"></div>
+</div>
+<div class="row">
+<button onclick="issueTokens()">Issue / Send Tokens</button>
+<button class="danger" onclick="burnTokens()">Burn Tokens</button>
+</div>
+<p class="small">For a traditional trust-line token, “burn” means sending issued tokens back to the issuer. The issuer cannot simply destroy another holder's balance.</p>
+<div id="issueStatus" class="status"></div>
+</section>
+
+<section id="settings" class="section">
+<h2>Issuer Account Settings</h2>
+<p class="small">Some token behavior is controlled by AccountSet flags. Choose carefully; some settings are difficult or impossible to reverse.</p>
+<div class="grid">
+<div><label>Require Auth</label><select id="requireAuth"><option value="unchanged">Unchanged</option><option value="on">Enable</option><option value="off">Disable</option></select></div>
+<div><label>Default Ripple</label><select id="rippleSetting"><option value="unchanged">Unchanged</option><option value="on">Enable</option><option value="off">Disable</option></select></div>
+<div><label>Disallow XRP</label><select id="disallowXrp"><option value="unchanged">Unchanged</option><option value="on">Enable</option><option value="off">Disable</option></select></div>
+<div><label>Global Freeze</label><select id="globalFreeze"><option value="unchanged">Unchanged</option><option value="on">Enable</option><option value="off">Disable</option></select></div>
+</div>
+<button onclick="updateIssuerSettings()">Apply Settings</button>
+<div id="settingsStatus" class="status"></div>
+</section>
+
+<section id="trust" class="section">
+<h2>Trust Line</h2>
+<div class="grid">
+<div><label>Holder / Signing Account</label><input id="trustHolder" placeholder="Uses connected wallet if blank"></div>
+<div><label>Issuer</label><input id="trustIssuer" placeholder="r..."></div>
+<div><label>Currency</label><input id="trustCurrency" placeholder="ABC"></div>
+<div><label>Trust Limit</label><input id="trustLimit" placeholder="1000000"></div>
+</div>
+<button onclick="setTrustLine()">Create / Update Trust Line</button>
+<div id="trustStatus" class="status"></div>
+</section>
+
+<section id="amm" class="section">
+<h2>Add Liquidity / AMM</h2>
+<p class="small">XRPL AMMs contain two assets. At most one can be XRP. Creating an AMM makes the creator the initial liquidity provider and issues LP tokens. For an existing pool, use AMM Deposit.</p>
+<div class="grid">
+<div><label>Asset 1 Currency</label><input id="asset1Currency" placeholder="XRP or ABC"></div>
+<div><label>Asset 1 Issuer</label><input id="asset1Issuer" placeholder="Required for token"></div>
+<div><label>Asset 1 Amount</label><input id="asset1Amount" placeholder="1000"></div>
+<div><label>Asset 2 Currency</label><input id="asset2Currency" placeholder="ABC"></div>
+<div><label>Asset 2 Issuer</label><input id="asset2Issuer" placeholder="Required for token"></div>
+<div><label>Asset 2 Amount</label><input id="asset2Amount" placeholder="100000"></div>
+<div><label>Trading Fee (0–1000)</label><input id="ammFee" type="number" min="0" max="1000" value="30"></div>
+<div><label>AMM ID for existing pool (optional)</label><input id="ammId" placeholder="AMM ID"></div>
+</div>
+<div class="row">
+<button onclick="createAMM()">Create New AMM</button>
+<button onclick="depositAMM()">Add Liquidity</button>
+</div>
+<div class="row">
+<button class="secondary" onclick="withdrawAMM()">Withdraw Liquidity</button>
+<button class="secondary" onclick="checkAMM()">Check AMM</button>
+</div>
+<div id="ammStatus" class="status"></div>
+</section>
+
+<section id="account" class="section">
+<h2>Account & Balances</h2>
+<button onclick="loadAccount()">Load Account</button>
+<div id="accountStatus" class="status"></div>
+</section>
+
+</div></div>
+
+<script>
+let client=null;
+
+function tab(id,btn){
+  document.querySelectorAll(".section").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+  document.getElementById(id).classList.add("active"); btn.classList.add("active");
+}
+
+async function getClient(){
+  if(!client){
+    client=new xrpl.Client(document.getElementById("network").value);
+    await client.connect();
+  } else if(client.url!==document.getElementById("network").value){
+    await client.disconnect();
+    client=new xrpl.Client(document.getElementById("network").value);
+    await client.connect();
+  }
+  return client;
+}
+
+function wallet(){
+  const seed=document.getElementById("seed").value.trim();
+  if(!seed) throw new Error("Enter a secret/seed.");
+  return xrpl.Wallet.fromSeed(seed);
+}
+
+async function submit(tx){
+  const c=await getClient();
+  const w=wallet();
+  tx.Account=w.address;
+  const prepared=await c.autofill(tx);
+  const signed=w.sign(prepared);
+  const result=await c.submitAndWait(signed.tx_blob);
+  return result;
+}
+
+function setStatus(id,text){document.getElementById(id).textContent=text;}
+
+async function configureIssuer(){
+  try{
+    const currency=document.getElementById("currency").value.trim().toUpperCase();
+    if(!currency) throw new Error("Enter a currency code.");
+    const feePct=Number(document.getElementById("transferFee").value||0);
+    if(feePct<0||feePct>2) throw new Error("Transfer fee must be 0–2%.");
+    const rate=Math.round(1000000000/(1-feePct/100));
+    const tx={TransactionType:"AccountSet"};
+    if(document.getElementById("defaultRipple").value==="yes") tx.SetFlag=8;
+    if(document.getElementById("tickSize").value) tx.TickSize=Number(document.getElementById("tickSize").value);
+    if(feePct>0) tx.TransferRate=rate;
+    const r=await submit(tx);
+    setStatus("createStatus","Configured issuer: "+r.result.hash+"\\nIssuer address: "+wallet().address+
+      "\\nToken identifier: "+currency+" / "+wallet().address);
+  }catch(e){setStatus("createStatus","ERROR: "+e.message);}
+}
+
+async function issueTokens(){
+  try{
+    const currency=document.getElementById("issueCurrency").value.trim().toUpperCase();
+    const issuer=document.getElementById("issueIssuer").value.trim();
+    const destination=document.getElementById("destination").value.trim();
+    const amount=document.getElementById("issueAmount").value.trim();
+    if(!currency||!issuer||!destination||!amount) throw new Error("Complete all fields.");
+    const r=await submit({TransactionType:"Payment",Destination:destination,
+      Amount:{currency,issuer,value:amount}});
+    setStatus("issueStatus","Issued successfully.\\nTX: "+r.result.hash);
+  }catch(e){setStatus("issueStatus","ERROR: "+e.message);}
+}
+
+async function burnTokens(){
+  try{
+    const currency=document.getElementById("issueCurrency").value.trim().toUpperCase();
+    const issuer=document.getElementById("issueIssuer").value.trim();
+    const amount=document.getElementById("issueAmount").value.trim();
+    if(!currency||!issuer||!amount) throw new Error("Complete currency, issuer and amount.");
+    const r=await submit({TransactionType:"Payment",Destination:issuer,
+      Amount:{currency,issuer,value:amount}});
+    setStatus("issueStatus","Burn/return transaction submitted.\\nTX: "+r.result.hash);
+  }catch(e){setStatus("issueStatus","ERROR: "+e.message);}
+}
+
+async function updateIssuerSettings(){
+  try{
+    const tx={TransactionType:"AccountSet"};
+    const rA=document.getElementById("requireAuth").value;
+    const rip=document.getElementById("rippleSetting").value;
+    const dis=document.getElementById("disallowXrp").value;
+    const fr=document.getElementById("globalFreeze").value;
+    if(rA==="on") tx.SetFlag=2;
+    if(rA==="off") tx.ClearFlag=2;
+    if(rip==="on") tx.SetFlag=8;
+    if(rip==="off") tx.ClearFlag=8;
+    if(dis==="on") tx.SetFlag=3;
+    if(dis==="off") tx.ClearFlag=3;
+    if(fr==="on") tx.SetFlag=7;
+    if(fr==="off") tx.ClearFlag=7;
+    const r=await submit(tx);
+    setStatus("settingsStatus","Settings applied.\\nTX: "+r.result.hash);
+  }catch(e){setStatus("settingsStatus","ERROR: "+e.message);}
+}
+
+async function setTrustLine(){
+  try{
+    const w=wallet();
+    const holder=document.getElementById("trustHolder").value.trim()||w.address;
+    if(holder!==w.address) throw new Error("The signing wallet must be the trust-line holder in this simple interface.");
+    const issuer=document.getElementById("trustIssuer").value.trim();
+    const currency=document.getElementById("trustCurrency").value.trim().toUpperCase();
+    const limit=document.getElementById("trustLimit").value.trim();
+    const r=await submit({TransactionType:"TrustSet",
+      LimitAmount:{currency,issuer,value:limit}});
+    setStatus("trustStatus","Trust line set.\\nTX: "+r.result.hash);
+  }catch(e){setStatus("trustStatus","ERROR: "+e.message);}
+}
+
+function asset(currency,issuer,amount){
+  currency=currency.trim().toUpperCase();
+  if(currency==="XRP") return xrpl.xrpToDrops(amount);
+  if(!issuer) throw new Error("Token issuer is required.");
+  return {currency,issuer,value:String(amount)};
+}
+
+function assetObj(currency,issuer){
+  currency=currency.trim().toUpperCase();
+  return currency==="XRP"?{currency:"XRP"}:{currency,issuer};
+}
+
+async function createAMM(){
+  try{
+    const a1=asset(document.getElementById("asset1Currency").value,document.getElementById("asset1Issuer").value,document.getElementById("asset1Amount").value);
+    const a2=asset(document.getElementById("asset2Currency").value,document.getElementById("asset2Issuer").value,document.getElementById("asset2Amount").value);
+    const c1=document.getElementById("asset1Currency").value.trim().toUpperCase();
+    const c2=document.getElementById("asset2Currency").value.trim().toUpperCase();
+    if(c1==="XRP"&&c2==="XRP") throw new Error("Both AMM assets cannot be XRP.");
+    if(c1!=="XRP"&&c2!=="XRP"&&document.getElementById("asset1Issuer").value===document.getElementById("asset2Issuer").value&&c1===c2)
+      throw new Error("The two assets must be different.");
+    const fee=Number(document.getElementById("ammFee").value);
+    if(fee<0||fee>1000) throw new Error("Trading fee must be 0–1000.");
+    const r=await submit({TransactionType:"AMMCreate",Amount:a1,Amount2:a2,TradingFee:fee});
+    setStatus("ammStatus","AMM created.\\nTX: "+r.result.hash+
+      "\\nFind the AMM ID with the AMM info/check function.");
+  }catch(e){setStatus("ammStatus","ERROR: "+e.message);}
+}
+
+async function depositAMM(){
+  try{
+    const a1=asset(document.getElementById("asset1Currency").value,document.getElementById("asset1Issuer").value,document.getElementById("asset1Amount").value);
+    const a2=asset(document.getElementById("asset2Currency").value,document.getElementById("asset2Issuer").value,document.getElementById("asset2Amount").value);
+    const r=await submit({TransactionType:"AMMDeposit",
+      Asset:assetObj(document.getElementById("asset1Currency").value,document.getElementById("asset1Issuer").value),
+      Asset2:assetObj(document.getElementById("asset2Currency").value,document.getElementById("asset2Issuer").value),
+      Amount:a1,Amount2:a2});
+    setStatus("ammStatus","Liquidity added.\\nTX: "+r.result.hash);
+  }catch(e){setStatus("ammStatus","ERROR: "+e.message);}
+}
+
+async function withdrawAMM(){
+  try{
+    const a1=assetObj(document.getElementById("asset1Currency").value,document.getElementById("asset1Issuer").value);
+    const a2=assetObj(document.getElementById("asset2Currency").value,document.getElementById("asset2Issuer").value);
+    const amount=document.getElementById("asset1Amount").value.trim();
+    const r=await submit({TransactionType:"AMMWithdraw",Asset:a1,Asset2:a2,
+      LPTokenIn:{currency:"LP",issuer:wallet().address,value:amount}});
+    setStatus("ammStatus","Withdrawal submitted.\\nTX: "+r.result.hash);
+  }catch(e){setStatus("ammStatus","ERROR: "+e.message);}
+}
+
+async function checkAMM(){
+  try{
+    const c=await getClient();
+    const asset1=assetObj(document.getElementById("asset1Currency").value,document.getElementById("asset1Issuer").value);
+    const asset2=assetObj(document.getElementById("asset2Currency").value,document.getElementById("asset2Issuer").value);
+    const r=await c.request({command:"amm_info",asset:asset1,asset2});
+    setStatus("ammStatus",JSON.stringify(r.result.amm,null,2));
+  }catch(e){setStatus("ammStatus","ERROR: "+e.message);}
+}
+
+async function loadAccount(){
+  try{
+    const c=await getClient(), w=wallet();
+    const info=await c.request({command:"account_info",account:w.address,ledger_index:"validated"});
+    const bal=await c.request({command:"account_lines",account:w.address,ledger_index:"validated"});
+    setStatus("accountStatus","Address: "+w.address+"\\nXRP: "+xrpl.dropsToXrp(info.result.account_data.Balance)+
+      "\\n\\nTrust-line balances:\\n"+JSON.stringify(bal.result.lines,null,2));
+  }catch(e){setStatus("accountStatus","ERROR: "+e.message);}
+}
+</script>
+</body>
+</html>
