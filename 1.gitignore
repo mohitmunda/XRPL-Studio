@@ -1,0 +1,11 @@
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local secrets — NEVER commit wallet credentials
+.env
+*.key
+*.seed
+*.secret
